@@ -24,7 +24,7 @@ dev = [
 ]
 
 [project.scripts]
-edit-python-pe = "sdxl_generator.main:main"
+sdxl-generator = "sdxl_generator.main:main"
 
 [build-system]
 requires = ["hatchling"]
