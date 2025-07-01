@@ -34,12 +34,6 @@ def cli() -> argparse.Namespace:
         "--lora_path", required=True, help="LoRA folder or .safetensors file."
     )
     p.add_argument(
-        "--emb_paths",
-        required=True,
-        nargs="+",
-        help="One or more textual-inversion embedding files.",
-    )
-    p.add_argument(
         "--out_dir", required=True, help="Where PNGs will be saved."
     )
     p.add_argument(
@@ -56,6 +50,12 @@ def cli() -> argparse.Namespace:
         "--sub_prompts_path",
         required=True,
         help="Path to sub-prompts text file. Prompts are separeted by newlines.",
+    )
+    p.add_argument(
+        "--emb_paths",
+        nargs="+",
+        default=[],
+        help="One or more textual-inversion embedding files.",
     )
     p.add_argument(
         "--batch",
