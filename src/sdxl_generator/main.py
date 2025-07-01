@@ -79,6 +79,12 @@ def cli() -> argparse.Namespace:
         help="Guidance scale (default 7.5).",
     )
     p.add_argument(
+        "--max_tokens",
+        type=int,
+        default=77,
+        help="Max tokens per prompt (default 77).",
+    )
+    p.add_argument(
         "--width", type=int, default=1024, help="Image width (default 1024)."
     )
     p.add_argument(
@@ -210,9 +216,11 @@ def main() -> None:
     # 4 ▸ Generate images
     for i, sub in enumerate(sub_prompts, 1):
         prompt = trim_prompt(
-            ", ".join([embed_prefix, system_prompt, sub]), pipe.tokenizer, 77
+            ", ".join([embed_prefix, system_prompt, sub]),
+            pipe.tokenizer,
+            a.max_tokens,
         )
-        neg_prompt = trim_prompt(neg_prompt, pipe.tokenizer, 77)
+        neg_prompt = trim_prompt(neg_prompt, pipe.tokenizer, a.max_tokens)
         g = torch.Generator("mps").manual_seed(a.seed + i)
 
         images = pipe(
