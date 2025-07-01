@@ -100,6 +100,13 @@ def cli() -> argparse.Namespace:
         choices=ASPECT_RATIO.keys(),
         help="Image aspect ratio (default 1:1).",
     )
+    p.add_argument(
+        "--device",
+        type=str,
+        default="mps",
+        choices=["cpu", "mps", "cuda"],
+        help="Device (default mps).",
+    )
     return p.parse_args()
 
 
@@ -148,7 +155,7 @@ def main() -> None:
             torch_dtype=torch.float16,
             variant="fp16",
             use_safetensors=True,
-        ).to("mps")
+        ).to(a.device)
     else:
         print(f"Loading directory / repo checkpoint: {a.ckpt_path}")
         pipe = StableDiffusionXLPipeline.from_pretrained(
@@ -156,7 +163,7 @@ def main() -> None:
             torch_dtype=torch.float16,
             variant="fp16",
             use_safetensors=True,
-        ).to("mps")
+        ).to(a.device)
 
     # 2 ▸ Load the LoRA at 0.5
     pipe.load_lora_weights(a.lora_path, adapter_name="default_0", prefix=None)
