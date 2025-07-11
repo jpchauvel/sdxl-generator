@@ -32,7 +32,10 @@ def cli() -> argparse.Namespace:
         help="Folder / HF repo or single .safetensors checkpoint.",
     )
     p.add_argument(
-        "--lora_path", required=True, help="LoRA folder or .safetensors file."
+        "--lora_paths",
+        nargs="*",
+        default=[],
+        help="List of LoRA .safetensors files.",
     )
     p.add_argument(
         "--out_dir", required=True, help="Where PNGs will be saved."
@@ -80,19 +83,14 @@ def cli() -> argparse.Namespace:
         help="Guidance scale (default 7.5).",
     )
     p.add_argument(
-        "--max_tokens",
-        type=int,
-        default=77,
-        help="Max tokens per prompt (default 77).",
-    )
-    p.add_argument(
         "--width", type=int, default=1024, help="Image width (default 1024)."
     )
     p.add_argument(
-        "--lora_strength",
+        "--lora_strengths",
+        nargs="*",
         type=float,
-        default=0.5,
-        help="LoRA strength (default 0.5).",
+        default=[],
+        help="List of LoRA strengths (same length as --lora_paths).",
     )
     p.add_argument(
         "--aspect_ratio",
@@ -109,32 +107,6 @@ def cli() -> argparse.Namespace:
         help="Device (default mps).",
     )
     return p.parse_args()
-
-
-# --------------------------------------------------------------------
-# helper: ensure prompt ≤ max_tokens
-# --------------------------------------------------------------------
-def trim_prompt(text: str, tokenizer, max_tokens: int = 75) -> str:
-    """
-    Clip a prompt so that it encodes to ≤ `max_tokens` (default 75) tokens.
-    Keeps whole comma-separated fragments; lops them off from the right.
-    """
-    ids = tokenizer(
-        text, return_tensors="pt", add_special_tokens=False
-    ).input_ids[0]
-    if len(ids) <= max_tokens:
-        return text  # already short enough
-
-    # progressively drop the last comma-separated chunk
-    new_text = ""
-    parts = [p.strip() for p in text.split(",")]
-    while parts and len(ids) > max_tokens:
-        parts.pop()  # drop right-most chunk
-        new_text = ", ".join(parts)
-        ids = tokenizer(
-            new_text, return_tensors="pt", add_special_tokens=False
-        ).input_ids[0]
-    return new_text
 
 
 # --------------------------------------------------------------------
@@ -207,7 +179,6 @@ def main() -> None:
     )
     if is_file:
         print(f"Loading single-file checkpoint: {a.ckpt_path}")
-        # allows .safetensors [oai_citation:0‡huggingface.co](https://huggingface.co/docs/diffusers/v0.28.0/en/api/loaders/single_file?utm_source=chatgpt.com)
         pipe = StableDiffusionXLPipeline.from_single_file(
             a.ckpt_path,
             torch_dtype=torch.float16,
@@ -222,9 +193,34 @@ def main() -> None:
             use_safetensors=True,
         ).to(a.device)
 
-    # 2 ▸ Load the LoRA at 0.5
-    pipe.load_lora_weights(a.lora_path, adapter_name="default_0", prefix=None)
-    pipe.set_adapters(["default_0"], adapter_weights=[a.lora_strength])
+    # 2 ▸ Load all specified LoRAs with matching strengths
+    if len(a.lora_paths) != len(a.lora_strengths):
+        raise ValueError(
+            f"--lora_paths ({len(a.lora_paths)}) and --lora_strengths ({len(a.lora_strengths)}) must match in length."
+        )
+
+    if pipe.num_fused_loras > 0:
+        print("Unfusing previously fused LoRA weights...")
+        pipe.unfuse_lora()
+
+    adapter_names = []
+    for idx, (lora_path, strength) in enumerate(
+        zip(a.lora_paths, a.lora_strengths)
+    ):
+        adapter_name = f"lora_{idx}"
+        print(
+            f"Loading LoRA {lora_path} with strength {strength} as adapter '{adapter_name}'"
+        )
+        pipe.load_lora_weights(
+            lora_path, adapter_name=adapter_name, prefix=None
+        )
+        adapter_names.append(adapter_name)
+
+    if adapter_names:
+        pipe.set_adapters(adapter_names, adapter_weights=a.lora_strengths)
+
+    print("Fusing LoRA into base weights...")
+    pipe.fuse_lora()
 
     # 3 ▸ Load embeddings & collect tokens
     def load_embedding(path: str) -> str | None:
@@ -296,7 +292,6 @@ def main() -> None:
             height=a.width * ASPECT_RATIO[a.aspect_ratio],
             width=a.width,
             num_images_per_prompt=a.batch,
-            cross_attention_kwargs={"scale": a.lora_strength},
             generator=g,
         ).images
 
