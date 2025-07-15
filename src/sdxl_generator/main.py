@@ -8,6 +8,7 @@ import pathlib
 
 import torch
 from diffusers import StableDiffusionXLPipeline
+from sd_embed.embedding_funcs import get_weighted_text_embeddings_sdxl
 from PIL import Image
 
 ASPECT_RATIO = {
@@ -107,63 +108,6 @@ def cli() -> argparse.Namespace:
         help="Device (default mps).",
     )
     return p.parse_args()
-
-
-# --------------------------------------------------------------------
-# helper: Get pipeline embeds for prompts bigger than the maxlength
-# --------------------------------------------------------------------
-def get_pipeline_embeds(
-    pipeline, prompt, negative_prompt, device
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Get pipeline embeds for prompts bigger than the maxlength of the pipe
-    :param pipeline:
-    :param prompt:
-    :param negative_prompt:
-    :param device:
-    :return:
-    """
-    max_length = pipeline.tokenizer.model_max_length
-
-    # simple way to determine length of tokens
-    input_ids = pipeline.tokenizer(
-        prompt, return_tensors="pt", truncation=False
-    ).input_ids.to(device)
-    negative_ids = pipeline.tokenizer(
-        negative_prompt, return_tensors="pt", truncation=False
-    ).input_ids.to(device)
-
-    # create the tensor based on which prompt is longer
-    if input_ids.shape[-1] >= negative_ids.shape[-1]:
-        shape_max_length = input_ids.shape[-1]
-        negative_ids = pipeline.tokenizer(
-            negative_prompt,
-            truncation=False,
-            padding="max_length",
-            max_length=shape_max_length,
-            return_tensors="pt",
-        ).input_ids.to(device)
-
-    else:
-        shape_max_length = negative_ids.shape[-1]
-        input_ids = pipeline.tokenizer(
-            prompt,
-            return_tensors="pt",
-            truncation=False,
-            padding="max_length",
-            max_length=shape_max_length,
-        ).input_ids.to(device)
-
-    concat_embeds = []
-    neg_embeds = []
-    for i in range(0, shape_max_length, max_length):
-        concat_embeds.append(
-            pipeline.text_encoder(input_ids[:, i : i + max_length])[0]
-        )
-        neg_embeds.append(
-            pipeline.text_encoder(negative_ids[:, i : i + max_length])[0]
-        )
-
-    return torch.cat(concat_embeds, dim=1), torch.cat(neg_embeds, dim=1)
 
 
 # --------------------------------------------------------------------
@@ -275,21 +219,24 @@ def main() -> None:
 
     # 4 ▸ Generate images
     for i, sub in enumerate(sub_prompts, 1):
-        prompt_embeds, neg_prompt_embeds = get_pipeline_embeds(
-            pipe,
-            ", ".join([embed_prefix, system_prompt, sub]),
-            neg_prompt,
-            a.device,
+        prompt_embeds, neg_prompt_embeds, pooled_embeds, neg_pooled_embeds = (
+            get_weighted_text_embeddings_sdxl(
+                pipe,
+                prompt=", ".join([embed_prefix, system_prompt, sub]),
+                neg_prompt=neg_prompt,
+            )
         )
 
         g = torch.Generator(a.device).manual_seed(a.seed + i)
 
-        images: list[Image.Image] = pipe(
+        images = pipe(
             prompt_embeds=prompt_embeds,
+            pooled_prompt_embeds=pooled_embeds,
             negative_prompt_embeds=neg_prompt_embeds,
+            negative_pooled_prompt_embeds=neg_pooled_embeds,
             num_inference_steps=a.steps,
             guidance_scale=a.guidance_scale,
-            height=a.width * ASPECT_RATIO[a.aspect_ratio],
+            height=int(a.width * ASPECT_RATIO[a.aspect_ratio]),
             width=a.width,
             num_images_per_prompt=a.batch,
             generator=g,

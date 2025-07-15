@@ -13,6 +13,7 @@ requires-python = ">=3.13,<4.0"
 dependencies = [
     "diffusers==0.34.0",
     "peft>=0.15.2",
+    "sd-embed",
     "torch==2.7.1",
     "transformers>=4.53.0",
 ]
@@ -32,3 +33,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.version]
 path = "src/sdxl_generator/__about__.py"
+
+[tool.uv.sources]
+sd-embed = { git = "https://github.com/xhinker/sd_embed.git", rev = "main" }
