@@ -208,8 +208,6 @@ outputs/
 outputs.old*/
 
 # prompt files
-system_prompt.txt
-neg_prompt.txt
-sub_prompts.txt
+*.txt
 
 # End of https://www.toptal.com/developers/gitignore/api/python,macos
