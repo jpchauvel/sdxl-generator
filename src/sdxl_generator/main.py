@@ -8,8 +8,8 @@ import pathlib
 
 import torch
 from diffusers import StableDiffusionXLPipeline
-from sd_embed.embedding_funcs import get_weighted_text_embeddings_sdxl
 from PIL import Image
+from sd_embed.embedding_funcs import get_weighted_text_embeddings_sdxl
 
 ASPECT_RATIO = {
     "1:1": 1.0,
